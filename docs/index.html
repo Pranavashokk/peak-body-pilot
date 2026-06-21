@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mesocycle — Predictive Hypertrophy & Fatigue Engine</title>
+<meta name="description" content="Control-system model for training. Tracks volume, RPE, bodyweight and sleep to predict fatigue, readiness, and when to PR or deload." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#05080a; --panel:#0a1014; --panel2:#0d1519; --line:#16242b;
+    --ink:#cfe8d8; --dim:#5d7d77; --green:#3bff9a; --amber:#ffb648; --red:#ff5577; --cyan:#5ad8ff;
+    --mono:'JetBrains Mono',ui-monospace,monospace; --sans:'Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);min-height:100%}
+  body{
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(59,255,154,.06), transparent 40%),
+      radial-gradient(circle at 80% 100%, rgba(90,216,255,.05), transparent 40%),
+      linear-gradient(rgba(59,255,154,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,255,154,.025) 1px, transparent 1px);
+    background-size:auto, auto, 32px 32px, 32px 32px;
+  }
+  a{color:var(--green);text-decoration:none}
+  .mono{font-family:var(--mono)}
+  header{
+    position:sticky;top:0;z-index:50;backdrop-filter:blur(8px);
+    background:rgba(5,8,10,.75);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;padding:14px 24px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-weight:700;letter-spacing:.05em}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green)}
+  nav a{margin-left:18px;color:var(--dim);font-family:var(--mono);font-size:13px}
+  nav a:hover{color:var(--ink)}
+  .cta{padding:8px 14px;border:1px solid var(--green);border-radius:6px;color:var(--green);font-family:var(--mono);font-size:13px;background:rgba(59,255,154,.06)}
+  main{max-width:1180px;margin:0 auto;padding:48px 24px}
+  .hero{padding:64px 0 48px;border-bottom:1px solid var(--line)}
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--green);border:1px solid var(--green);padding:4px 8px;border-radius:4px;margin-bottom:18px}
+  h1{font-size:clamp(34px,5vw,56px);line-height:1.05;margin:0 0 16px;letter-spacing:-.02em}
+  h1 .accent{color:var(--green)}
+  .sub{color:var(--dim);max-width:680px;font-size:17px;line-height:1.55}
+  .row{display:grid;gap:16px}
+  @media(min-width:780px){.row.cols-3{grid-template-columns:repeat(3,1fr)} .row.cols-4{grid-template-columns:repeat(4,1fr)} .row.cols-2{grid-template-columns:repeat(2,1fr)}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+  .panel h3{margin:0 0 6px;font-family:var(--mono);font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .stat{font-family:var(--mono);font-size:34px;color:var(--green);line-height:1}
+  .stat.amber{color:var(--amber)} .stat.red{color:var(--red)} .stat.cyan{color:var(--cyan)}
+  .delta{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:6px}
+  section{margin-top:56px}
+  section > h2{font-family:var(--mono);font-size:13px;color:var(--green);letter-spacing:.15em;text-transform:uppercase;margin:0 0 18px}
+  .directive{
+    margin-top:24px;padding:18px;border:1px solid var(--green);border-radius:10px;
+    background:linear-gradient(180deg,rgba(59,255,154,.08),rgba(59,255,154,.02));
+    display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;
+  }
+  .directive .label{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.1em}
+  .directive .verdict{font-family:var(--mono);font-size:22px;color:var(--green);margin-top:4px}
+  .directive p{margin:6px 0 0;color:var(--ink);font-size:14px;max-width:640px}
+  .feat{padding:20px}
+  .feat .icon{width:36px;height:36px;border:1px solid var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--green);font-family:var(--mono);margin-bottom:12px}
+  .feat h4{margin:0 0 6px;font-size:16px}
+  .feat p{margin:0;color:var(--dim);font-size:14px;line-height:1.5}
+  form{display:grid;gap:10px}
+  label{font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  input,select{
+    background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    padding:10px 12px;border-radius:6px;font-family:var(--mono);font-size:14px;width:100%;
+  }
+  input:focus,select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px rgba(59,255,154,.15)}
+  button{
+    background:var(--green);color:#021;border:none;padding:10px 16px;border-radius:6px;
+    font-family:var(--mono);font-weight:700;cursor:pointer;font-size:13px;letter-spacing:.05em;
+  }
+  button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .grid-form{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  @media(min-width:780px){.grid-form{grid-template-columns:repeat(4,1fr)}}
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+  .pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-family:var(--mono)}
+  .pill.green{background:rgba(59,255,154,.12);color:var(--green)}
+  .pill.amber{background:rgba(255,182,72,.12);color:var(--amber)}
+  .pill.red{background:rgba(255,85,119,.12);color:var(--red)}
+  .chartwrap{height:240px}
+  footer{border-top:1px solid var(--line);padding:32px 24px;color:var(--dim);font-family:var(--mono);font-size:12px;text-align:center;margin-top:64px}
+  .auth{
+    position:fixed;inset:0;background:rgba(2,5,7,.92);display:flex;align-items:center;justify-content:center;z-index:100;
+    backdrop-filter:blur(8px);
+  }
+  .auth.hidden{display:none}
+  .auth .card{background:var(--panel);border:1px solid var(--green);border-radius:12px;padding:28px;max-width:380px;width:90%;box-shadow:0 0 40px rgba(59,255,154,.15)}
+  .auth h2{margin:0 0 4px;font-family:var(--mono)} .auth p{color:var(--dim);font-size:13px;margin:0 0 18px}
+  .tab{display:flex;gap:6px;margin-bottom:16px}
+  .tab button{flex:1;background:var(--panel2);color:var(--dim);font-weight:500}
+  .tab button.active{background:var(--green);color:#021}
+  .blink{animation:blink 1.4s infinite}
+  @keyframes blink{50%{opacity:.3}}
+  .legend{display:flex;gap:14px;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px}
+  .legend span::before{content:"";display:inline-block;width:10px;height:2px;margin-right:6px;vertical-align:middle}
+  .lg-fit::before{background:var(--cyan)} .lg-fat::before{background:var(--red)} .lg-red::before{background:var(--green)}
+</style>
+</head>
+<body>
+
+<div id="auth" class="auth">
+  <div class="card">
+    <div class="tab">
+      <button class="active" data-tab="signin">SIGN IN</button>
+      <button data-tab="signup">SIGN UP</button>
+    </div>
+    <h2 class="mono">MESOCYCLE</h2>
+    <p>Predictive hypertrophy & fatigue engine. Local demo — no server required.</p>
+    <form id="authForm">
+      <label>Email</label>
+      <input type="email" id="email" required placeholder="lifter@lab.io" />
+      <label>Password</label>
+      <input type="password" id="password" required minlength="4" placeholder="••••••••" />
+      <button type="submit" id="authBtn" style="margin-top:8px">ENTER LAB →</button>
+    </form>
+    <p style="margin-top:14px;font-size:11px">All data stays in your browser (localStorage).</p>
+  </div>
+</div>
+
+<header>
+  <div class="brand"><span class="dot blink"></span> MESOCYCLE<span style="color:var(--dim);margin-left:8px;font-weight:400">v0.2</span></div>
+  <nav>
+    <a href="#dashboard">DASHBOARD</a>
+    <a href="#log">LOG</a>
+    <a href="#planner">PLANNER</a>
+    <a href="#export">EXPORT</a>
+    <a href="#" id="logoutBtn" class="cta">LOGOUT</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <span class="tag">CONTROL-SYSTEM MODEL · BANISTER FITNESS–FATIGUE</span>
+    <h1>Train your body like a <span class="accent">control system</span>.</h1>
+    <p class="sub">Mesocycle ingests volume, RPE, bodyweight and sleep. A rolling EWMA model estimates systemic fatigue and recovery, then prescribes whether to push for a PR, maintain, or deload — before your body forces the decision for you.</p>
+  </section>
+
+  <section id="dashboard">
+    <h2>// TELEMETRY</h2>
+    <div class="row cols-4">
+      <div class="panel"><h3>Readiness</h3><div class="stat" id="kReadiness">—</div><div class="delta" id="kReadinessD">fitness − fatigue</div></div>
+      <div class="panel"><h3>Fatigue (τ=4d)</h3><div class="stat amber" id="kFatigue">—</div><div class="delta">acute load EWMA</div></div>
+      <div class="panel"><h3>Fitness (τ=28d)</h3><div class="stat cyan" id="kFitness">—</div><div class="delta">chronic load EWMA</div></div>
+      <div class="panel"><h3>BW 7d trend</h3><div class="stat" id="kBW">—</div><div class="delta" id="kBWD">kg / week</div></div>
+    </div>
+
+    <div class="directive" id="directive">
+      <div>
+        <div class="label">// SYSTEM DIRECTIVE</div>
+        <div class="verdict" id="verdict">AWAITING DATA</div>
+        <p id="verdictNote">Log a few sessions to calibrate the model.</p>
+      </div>
+      <button class="ghost" onclick="seedDemo()">LOAD DEMO DATA</button>
+    </div>
+
+    <div class="row cols-2" style="margin-top:20px">
+      <div class="panel">
+        <h3>Fitness · Fatigue · Readiness</h3>
+        <div class="chartwrap"><canvas id="chartFFR"></canvas></div>
+        <div class="legend"><span class="lg-fit">fitness</span><span class="lg-fat">fatigue</span><span class="lg-red">readiness</span></div>
+      </div>
+      <div class="panel">
+        <h3>Weekly volume by muscle group</h3>
+        <div class="chartwrap"><canvas id="chartVol"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="log">
+    <h2>// DATA ENTRY</h2>
+    <div class="row cols-2">
+      <div class="panel">
+        <h3>Daily metrics</h3>
+        <form id="metricsForm">
+          <div class="grid-form">
+            <div><label>Date</label><input type="date" id="mDate" required /></div>
+            <div><label>BW (kg)</label><input type="number" step="0.1" id="mBW" placeholder="82.4" /></div>
+            <div><label>Sleep (h)</label><input type="number" step="0.1" id="mSleep" placeholder="7.5" /></div>
+            <div><label>Readiness 1–10</label><input type="number" min="1" max="10" id="mReady" placeholder="7" /></div>
+          </div>
+          <button type="submit" style="margin-top:10px">COMMIT METRICS</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h3>Training set</h3>
+        <form id="setForm">
+          <div class="grid-form">
+            <div><label>Date</label><input type="date" id="sDate" required /></div>
+            <div>
+              <label>Muscle</label>
+              <select id="sMuscle">
+                <option>chest</option><option>back</option><option>quads</option>
+                <option>hamstrings</option><option>glutes</option><option>shoulders</option>
+                <option>biceps</option><option>triceps</option><option>calves</option><option>core</option>
+              </select>
+            </div>
+            <div><label>Exercise</label><input id="sEx" placeholder="Bench Press" required /></div>
+            <div><label>Weight (kg)</label><input type="number" step="0.5" id="sW" placeholder="100" required /></div>
+            <div><label>Reps</label><input type="number" id="sR" placeholder="6" required /></div>
+            <div><label>RPE</label><input type="number" step="0.5" min="1" max="10" id="sRPE" placeholder="8" required /></div>
+          </div>
+          <button type="submit" style="margin-top:10px">COMMIT SET</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3>Recent sets</h3>
+      <div style="overflow:auto;max-height:260px">
+        <table id="setsTable">
+          <thead><tr><th>Date</th><th>Muscle</th><th>Exercise</th><th>Wt</th><th>Reps</th><th>RPE</th><th>Tonnage</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="planner">
+    <h2>// ADAPTIVE PLANNER</h2>
+    <div class="panel">
+      <p style="color:var(--dim);margin:0 0 14px;font-size:14px">Next session prescription, derived from current readiness and per-muscle recent volume.</p>
+      <table id="planTable">
+        <thead><tr><th>Muscle</th><th>7d sets</th><th>Recovery</th><th>Prescription</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>// CAPABILITIES</h2>
+    <div class="row cols-3">
+      <div class="panel feat"><div class="icon">λ</div><h4>EWMA fatigue model</h4><p>Acute (τ=4d) vs chronic (τ=28d) impulse decay — the Banister method applied to RPE-weighted tonnage.</p></div>
+      <div class="panel feat"><div class="icon">Δ</div><h4>Bodyweight regression</h4><p>7-day linear trend on daily BW; aggressive drops trigger macro-adjustment warnings to protect lean mass.</p></div>
+      <div class="panel feat"><div class="icon">∑</div><h4>Per-muscle volume</h4><p>Tracks weekly working sets per muscle group against MEV / MAV / MRV landmarks.</p></div>
+      <div class="panel feat"><div class="icon">!</div><h4>Deload detection</h4><p>Sustained readiness deficit + rising RPE-at-load auto-flags a deload week before regression hits.</p></div>
+      <div class="panel feat"><div class="icon">★</div><h4>PR windows</h4><p>Positive readiness + freshness on a target muscle opens a "PR_ATTEMPT" window in the planner.</p></div>
+      <div class="panel feat"><div class="icon">⇄</div><h4>Adaptive split</h4><p>Next-session prescriptions per muscle: PUSH, MAINTAIN, RECOVER, or PR_ATTEMPT.</p></div>
+    </div>
+  </section>
+
+  <section id="export">
+    <h2>// EXPORT / RESET</h2>
+    <div class="panel" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button onclick="exportJSON()">DOWNLOAD JSON</button>
+      <button class="ghost" onclick="exportCSV()">DOWNLOAD CSV (sets)</button>
+      <button class="ghost" onclick="if(confirm('Wipe all local data?')){localStorage.clear();location.reload()}">RESET DATA</button>
+      <span style="color:var(--dim);font-family:var(--mono);font-size:12px;margin-left:auto">Storage: localStorage · No backend</span>
+    </div>
+  </section>
+</main>
+
+<footer>
+  MESOCYCLE · static build · deployable on GitHub Pages · <a href="https://github.com" target="_blank">source</a>
+</footer>
+
+<script>
+/* ---------- storage ---------- */
+const DB_KEY='meso_db_v1', AUTH_KEY='meso_auth_v1';
+const db = JSON.parse(localStorage.getItem(DB_KEY)||'{"metrics":[],"sets":[]}');
+const save = ()=>localStorage.setItem(DB_KEY, JSON.stringify(db));
+const today = ()=>new Date().toISOString().slice(0,10);
+const daysBetween=(a,b)=>Math.round((new Date(b)-new Date(a))/86400000);
+
+/* ---------- auth (demo) ---------- */
+const authEl=document.getElementById('auth');
+function checkAuth(){ if(localStorage.getItem(AUTH_KEY)) authEl.classList.add('hidden'); }
+checkAuth();
+document.querySelectorAll('.tab button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tab button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  document.getElementById('authBtn').textContent = b.dataset.tab==='signup'?'CREATE ACCOUNT →':'ENTER LAB →';
+});
+document.getElementById('authForm').onsubmit=e=>{
+  e.preventDefault();
+  localStorage.setItem(AUTH_KEY, JSON.stringify({email:email.value,t:Date.now()}));
+  authEl.classList.add('hidden'); render();
+};
+document.getElementById('logoutBtn').onclick=e=>{e.preventDefault();localStorage.removeItem(AUTH_KEY);authEl.classList.remove('hidden');};
+
+/* ---------- engine ---------- */
+function dailyLoad(date){
+  return db.sets.filter(s=>s.date===date)
+    .reduce((a,s)=> a + s.weight*s.reps*(0.5 + s.rpe/20), 0); // rpe-weighted tonnage
+}
+function ewmaSeries(days, tau){
+  const k = 1 - Math.exp(-1/tau);
+  let v=0, out=[];
+  for(const d of days){ v = v + k*(dailyLoad(d) - v); out.push(v); }
+  return out;
+}
+function rangeDays(n){
+  const out=[]; const t=new Date();
+  for(let i=n-1;i>=0;i--){const d=new Date(t);d.setDate(d.getDate()-i);out.push(d.toISOString().slice(0,10));}
+  return out;
+}
+function bwTrend(){
+  const m = db.metrics.filter(x=>x.bw).slice(-14);
+  if(m.length<3) return null;
+  const xs=m.map((_,i)=>i), ys=m.map(x=>x.bw);
+  const n=xs.length, sx=xs.reduce((a,b)=>a+b,0), sy=ys.reduce((a,b)=>a+b,0);
+  const sxy=xs.reduce((a,b,i)=>a+b*ys[i],0), sxx=xs.reduce((a,b)=>a+b*b,0);
+  return ((n*sxy-sx*sy)/(n*sxx-sx*sx))*7; // kg per week
+}
+function directive(readiness, bwk){
+  if(readiness>15) return ['PR_ATTEMPT','Freshness + capacity. Open a PR window on a primed muscle.','green'];
+  if(readiness>5)  return ['PUSH','Net positive. Add a working set or +2.5kg on top movements.','green'];
+  if(readiness>-5) return ['MAINTAIN','Equilibrium. Hit prescribed volume at RPE 7-8.','amber'];
+  if(readiness>-15)return ['DELOAD','Acute fatigue rising. Cut volume ~40% for 5-7 days.','amber'];
+  return ['MACRO_ADJUST', (bwk!=null && bwk<-0.4)?'Deficit too steep — raise calories ~10% to protect lean mass.':'Systemic fatigue critical. Full deload week required.','red'];
+}
+
+/* ---------- render ---------- */
+let chartFFR, chartVol;
+function render(){
+  const days = rangeDays(28);
+  const fatigue = ewmaSeries(days,4);
+  const fitness = ewmaSeries(days,28);
+  const readiness = fitness.map((f,i)=>f-fatigue[i]);
+  const last = (a)=>a[a.length-1]||0;
+  const bwk = bwTrend();
+
+  document.getElementById('kReadiness').textContent = last(readiness).toFixed(1);
+  document.getElementById('kFatigue').textContent = last(fatigue).toFixed(0);
+  document.getElementById('kFitness').textContent = last(fitness).toFixed(0);
+  document.getElementById('kBW').textContent = bwk==null?'—':(bwk>0?'+':'')+bwk.toFixed(2);
+  document.getElementById('kBWD').textContent = bwk==null?'need 3+ days BW':'kg / week';
+
+  const [verdict,note,color] = directive(last(readiness), bwk);
+  const v=document.getElementById('verdict'); v.textContent=verdict;
+  v.style.color = color==='red'?'var(--red)':color==='amber'?'var(--amber)':'var(--green)';
+  document.getElementById('directive').style.borderColor = v.style.color;
+  document.getElementById('verdictNote').textContent = note;
+
+  // FFR chart
+  const ds = {
+    labels: days.map(d=>d.slice(5)),
+    datasets:[
+      {label:'fitness',data:fitness,borderColor:'#5ad8ff',backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2},
+      {label:'fatigue',data:fatigue,borderColor:'#ff5577',backgroundColor:'transparent',tension:.3,pointRadius:0,borderWidth:2},
+      {label:'readiness',data:readiness,borderColor:'#3bff9a',backgroundColor:'rgba(59,255,154,.08)',tension:.3,pointRadius:0,borderWidth:2,fill:true},
+    ]
+  };
+  const opts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{ticks:{color:'#5d7d77',font:{family:'JetBrains Mono',size:10}},grid:{color:'#16242b'}},
+            y:{ticks:{color:'#5d7d77',font:{family:'JetBrains Mono',size:10}},grid:{color:'#16242b'}}}};
+  if(chartFFR) chartFFR.destroy();
+  chartFFR = new Chart(document.getElementById('chartFFR'),{type:'line',data:ds,options:opts});
+
+  // volume chart (last 7d by muscle)
+  const cutoff = rangeDays(7);
+  const volByM={};
+  db.sets.filter(s=>cutoff.includes(s.date)).forEach(s=>{volByM[s.muscle]=(volByM[s.muscle]||0)+1;});
+  if(chartVol) chartVol.destroy();
+  chartVol = new Chart(document.getElementById('chartVol'),{
+    type:'bar',
+    data:{labels:Object.keys(volByM),datasets:[{data:Object.values(volByM),backgroundColor:'#3bff9a'}]},
+    options:{...opts,plugins:{legend:{display:false}}}
+  });
+
+  // sets table
+  const tb = document.querySelector('#setsTable tbody'); tb.innerHTML='';
+  db.sets.slice().reverse().slice(0,30).forEach((s,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${s.date}</td><td>${s.muscle}</td><td>${s.exercise}</td><td>${s.weight}</td><td>${s.reps}</td><td>${s.rpe}</td><td>${(s.weight*s.reps).toFixed(0)}</td>
+      <td><button class="ghost" style="padding:4px 8px" data-idx="${db.sets.length-1-i}">×</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('button[data-idx]').forEach(b=>b.onclick=()=>{db.sets.splice(+b.dataset.idx,1);save();render();});
+
+  // planner
+  const pt = document.querySelector('#planTable tbody'); pt.innerHTML='';
+  const muscles=['chest','back','quads','hamstrings','glutes','shoulders','biceps','triceps','calves','core'];
+  muscles.forEach(m=>{
+    const sets7 = db.sets.filter(s=>s.muscle===m && cutoff.includes(s.date)).length;
+    const recent = db.sets.filter(s=>s.muscle===m).slice(-5);
+    const avgRPE = recent.length? recent.reduce((a,s)=>a+s.rpe,0)/recent.length : 0;
+    let rec='Fresh',pill='green',rx='PUSH +1 set';
+    if(sets7>14){rec='Saturated';pill='red';rx='RECOVER';}
+    else if(sets7>9 || avgRPE>8.5){rec='Loaded';pill='amber';rx='MAINTAIN';}
+    else if(sets7===0){rec='Fresh';pill='green';rx=last(readiness)>10?'PR_ATTEMPT':'PUSH';}
+    pt.innerHTML += `<tr><td>${m}</td><td>${sets7}</td><td><span class="pill ${pill}">${rec}</span></td><td>${rx}</td></tr>`;
+  });
+}
+
+/* ---------- handlers ---------- */
+['mDate','sDate'].forEach(id=>document.getElementById(id).value=today());
+document.getElementById('metricsForm').onsubmit=e=>{
+  e.preventDefault();
+  const m={date:mDate.value,bw:parseFloat(mBW.value)||null,sleep:parseFloat(mSleep.value)||null,ready:parseFloat(mReady.value)||null};
+  db.metrics = db.metrics.filter(x=>x.date!==m.date).concat(m).sort((a,b)=>a.date.localeCompare(b.date));
+  save();render();e.target.reset();mDate.value=today();
+};
+document.getElementById('setForm').onsubmit=e=>{
+  e.preventDefault();
+  db.sets.push({date:sDate.value,muscle:sMuscle.value,exercise:sEx.value,weight:+sW.value,reps:+sR.value,rpe:+sRPE.value});
+  save();render();sEx.value='';sW.value='';sR.value='';sRPE.value='';
+};
+
+function seedDemo(){
+  db.metrics=[];db.sets=[];
+  const muscles=['chest','back','quads','shoulders','hamstrings','biceps','triceps'];
+  const exMap={chest:'Bench',back:'Row',quads:'Squat',shoulders:'OHP',hamstrings:'RDL',biceps:'Curl',triceps:'Pushdown'};
+  for(let i=27;i>=0;i--){
+    const d=new Date();d.setDate(d.getDate()-i);const ds=d.toISOString().slice(0,10);
+    db.metrics.push({date:ds,bw:82+Math.sin(i/4)*0.6-i*0.02,sleep:7+Math.random(),ready:6+Math.round(Math.random()*3)});
+    if(i%2===0){
+      const m=muscles[i%muscles.length];
+      for(let s=0;s<4;s++) db.sets.push({date:ds,muscle:m,exercise:exMap[m],weight:80+s*5,reps:8-s,rpe:7+s*0.5});
+    }
+  }
+  save();render();
+}
+
+function exportJSON(){
+  const b=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='mesocycle.json';a.click();
+}
+function exportCSV(){
+  const rows=[['date','muscle','exercise','weight','reps','rpe'],...db.sets.map(s=>[s.date,s.muscle,s.exercise,s.weight,s.reps,s.rpe])];
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='sets.csv';a.click();
+}
+
+render();
+</script>
+</body>
+</html>
